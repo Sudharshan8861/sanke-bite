@@ -189,10 +189,21 @@ fn test_food_can_spawn_after_wrapping() {
 
         if !g.is_over() {
             // Food should never spawn on snake
-            assert!(!g.snake.body.iter().any(|&p| p == g.food));
-            // Food should be within bounds
-            assert!(g.food.x >= 0 && g.food.x < grid.w);
-            assert!(g.food.y >= 0 && g.food.y < grid.h);
+            #[cfg(not(feature = "multiple_foods"))]
+            {
+                assert!(!g.snake.body.iter().any(|&p| p == g.food));
+                // Food should be within bounds
+                assert!(g.food.x >= 0 && g.food.x < grid.w);
+                assert!(g.food.y >= 0 && g.food.y < grid.h);
+            }
+            #[cfg(feature = "multiple_foods")]
+            {
+                for food in &g.foods {
+                    assert!(!g.snake.body.iter().any(|&p| p == food.position));
+                    assert!(food.position.x >= 0 && food.position.x < grid.w);
+                    assert!(food.position.y >= 0 && food.position.y < grid.h);
+                }
+            }
         }
     }
 }

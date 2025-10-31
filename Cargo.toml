@@ -25,3 +25,4 @@ proptest = "1.5"
 [features]
 default = []
 wrap_walls = []
+multiple_foods = []

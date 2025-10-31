@@ -27,7 +27,10 @@ fn test_game_state_initialization() {
     assert!(!state.is_over());
 
     // Check that food is not on snake
+    #[cfg(not(feature = "multiple_foods"))]
     assert_ne!(state.food, state.snake.body[0]);
+    #[cfg(feature = "multiple_foods")]
+    assert!(!state.foods.iter().any(|f| f.position == state.snake.body[0]));
 }
 
 #[test]
@@ -49,7 +52,10 @@ fn test_game_state_different_grid_sizes() {
         assert_eq!(state.snake.body[0].y, expected_y);
 
         // Food should not be on snake
+        #[cfg(not(feature = "multiple_foods"))]
         assert_ne!(state.food, state.snake.body[0]);
+        #[cfg(feature = "multiple_foods")]
+        assert!(!state.foods.iter().any(|f| f.position == state.snake.body[0]));
     }
 }
 
@@ -250,5 +256,8 @@ fn test_reset_restores_invariants() {
     assert_eq!(state.snake.dir, Direction::Right);
     assert_eq!(state.snake.body.len(), 1);
     assert_eq!(state.snake.body[0], center);
+    #[cfg(not(feature = "multiple_foods"))]
     assert_ne!(state.food, center);
+    #[cfg(feature = "multiple_foods")]
+    assert!(!state.foods.iter().any(|f| f.position == center));
 }
