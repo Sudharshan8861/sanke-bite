@@ -156,6 +156,7 @@ fn test_game_over_state_not_affected_by_movement() {
 }
 
 #[test]
+#[cfg(not(feature = "multiple_foods"))]
 fn food_never_spawns_on_snake() {
     let grid = GridSize { w: 8, h: 8 };
     let mut rng = Seeded::new(123);
@@ -285,6 +286,7 @@ fn test_no_teleport_movement() {
 }
 
 #[test]
+#[cfg(not(feature = "multiple_foods"))]
 fn test_eating_food_increments_score() {
     let grid = GridSize { w: 10, h: 10 };
     let mut rng = Seeded::new(123);

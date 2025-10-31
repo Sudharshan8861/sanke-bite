@@ -1,4 +1,6 @@
 use crate::{rng::RngLike, types::*};
+#[cfg(feature = "multiple_foods")]
+use crate::types::{Food, FoodType};
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,7 +20,10 @@ pub enum RunState {
 pub struct GameState {
     pub grid: GridSize,
     pub snake: Snake,
+    #[cfg(not(feature = "multiple_foods"))]
     pub food: Position,
+    #[cfg(feature = "multiple_foods")]
+    pub foods: Vec<Food>,
     pub score: u32,
     pub run_state: RunState,
     #[cfg(feature = "wrap_walls")]
@@ -36,7 +41,7 @@ impl GameState {
         Self::new_with_wrap(grid, rng, false)
     }
 
-    #[cfg(feature = "wrap_walls")]
+    #[cfg(all(feature = "wrap_walls", not(feature = "multiple_foods")))]
     pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
@@ -60,7 +65,31 @@ impl GameState {
         }
     }
 
-    #[cfg(not(feature = "wrap_walls"))]
+    #[cfg(all(feature = "wrap_walls", feature = "multiple_foods"))]
+    pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let foods = spawn_initial_foods(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            foods,
+            score: 0,
+            run_state: RunState::Running,
+            wrap_walls,
+        }
+    }
+
+    #[cfg(all(not(feature = "wrap_walls"), not(feature = "multiple_foods")))]
     fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
@@ -78,6 +107,29 @@ impl GameState {
             grid,
             snake,
             food,
+            score: 0,
+            run_state: RunState::Running,
+        }
+    }
+
+    #[cfg(all(not(feature = "wrap_walls"), feature = "multiple_foods"))]
+    fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let foods = spawn_initial_foods(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            foods,
             score: 0,
             run_state: RunState::Running,
         }
@@ -103,6 +155,7 @@ impl GameState {
         matches!(self.run_state, RunState::Over)
     }
 
+    #[cfg(not(feature = "multiple_foods"))]
     pub fn reset<R: RngLike>(&mut self, mut rng: R) {
         let start = Position {
             x: self.grid.w / 2,
@@ -118,6 +171,23 @@ impl GameState {
         self.run_state = RunState::Running;
         // wrap_walls setting is preserved on reset
     }
+
+    #[cfg(feature = "multiple_foods")]
+    pub fn reset<R: RngLike>(&mut self, mut rng: R) {
+        let start = Position {
+            x: self.grid.w / 2,
+            y: self.grid.h / 2,
+        };
+
+        self.snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+        self.foods = spawn_initial_foods(&self.grid, &self.snake, &mut rng);
+        self.score = 0;
+        self.run_state = RunState::Running;
+        // wrap_walls setting is preserved on reset
+    }
 }
 
 fn spawn_food<R: RngLike>(grid: &GridSize, snake: &Snake, rng: &mut R) -> Position {
@@ -129,5 +199,62 @@ fn spawn_food<R: RngLike>(grid: &GridSize, snake: &Snake, rng: &mut R) -> Positi
         if !snake.body.iter().any(|&s| s == p) {
             return p;
         }
+    }
+}
+
+#[cfg(feature = "multiple_foods")]
+fn spawn_initial_foods<R: RngLike>(grid: &GridSize, snake: &Snake, rng: &mut R) -> Vec<Food> {
+    let mut foods = Vec::new();
+    
+    // Spawn 3-5 foods initially, with a mix of types
+    let num_foods = 3 + ((rng.next_u32() % 3) as usize); // 3-5 foods
+    
+    for _ in 0..num_foods {
+        let food = spawn_food_with_type(grid, snake, rng, &foods);
+        foods.push(food);
+    }
+    
+    foods
+}
+
+#[cfg(feature = "multiple_foods")]
+fn spawn_food_with_type<R: RngLike>(
+    grid: &GridSize,
+    snake: &Snake,
+    rng: &mut R,
+    existing_foods: &[Food],
+) -> Food {
+    let food_type = determine_food_type(rng);
+    
+    loop {
+        let x = (rng.next_u32() as i32).rem_euclid(grid.w);
+        let y = (rng.next_u32() as i32).rem_euclid(grid.h);
+        let p = Position { x, y };
+
+        // Check not on snake and not on existing foods
+        if !snake.body.iter().any(|&s| s == p)
+            && !existing_foods.iter().any(|f| f.position == p)
+        {
+            return Food {
+                position: p,
+                food_type,
+            };
+        }
+    }
+}
+
+#[cfg(feature = "multiple_foods")]
+fn determine_food_type<R: RngLike>(rng: &mut R) -> FoodType {
+    // Spawn probabilities:
+    // Normal: 70% (0-69)
+    // Golden: 25% (70-94)
+    // Special: 5% (95-99)
+    let roll = rng.next_u32() % 100;
+    if roll < 70 {
+        FoodType::Normal
+    } else if roll < 95 {
+        FoodType::Golden
+    } else {
+        FoodType::Special
     }
 }

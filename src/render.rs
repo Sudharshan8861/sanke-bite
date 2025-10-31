@@ -1,6 +1,8 @@
 //! Rendering module: draws grid, snake, food, and HUD using egui::Painter
 
 use crate::{state::GameState, types::*};
+#[cfg(feature = "multiple_foods")]
+use crate::types::{Food, FoodType};
 use eframe::egui::{self, Color32, Painter, Rect, Stroke, Style, TextStyle};
 
 const CELL_MARGIN: f32 = 1.0;
@@ -8,6 +10,13 @@ const GRID_COLOR: Color32 = Color32::from_rgb(40, 40, 40);
 const SNAKE_COLOR: Color32 = Color32::from_rgb(0, 200, 0);
 const FOOD_COLOR: Color32 = Color32::from_rgb(200, 0, 0);
 const HEAD_COLOR: Color32 = Color32::from_rgb(0, 255, 0);
+
+#[cfg(feature = "multiple_foods")]
+const NORMAL_FOOD_COLOR: Color32 = Color32::from_rgb(200, 0, 0);
+#[cfg(feature = "multiple_foods")]
+const GOLDEN_FOOD_COLOR: Color32 = Color32::from_rgb(255, 215, 0);
+#[cfg(feature = "multiple_foods")]
+const SPECIAL_FOOD_COLOR: Color32 = Color32::from_rgb(255, 0, 255);
 
 /// Render the entire game state
 pub fn render_game(painter: &Painter, rect: Rect, game_state: &GameState) {
@@ -19,8 +28,12 @@ pub fn render_game(painter: &Painter, rect: Rect, game_state: &GameState) {
     // Draw grid
     draw_grid(painter, &grid_rect, game_state.grid, cell_size);
 
-    // Draw food
+    // Draw foods
+    #[cfg(not(feature = "multiple_foods"))]
     draw_food(painter, &grid_rect, game_state.food, cell_size);
+    
+    #[cfg(feature = "multiple_foods")]
+    draw_foods(painter, &grid_rect, &game_state.foods, cell_size);
 
     // Draw snake
     draw_snake(painter, &grid_rect, &game_state.snake, cell_size);
@@ -76,9 +89,30 @@ fn draw_grid(painter: &Painter, grid_rect: &Rect, grid_size: GridSize, cell_size
 }
 
 /// Draw the food
+#[cfg(not(feature = "multiple_foods"))]
 fn draw_food(painter: &Painter, grid_rect: &Rect, food: Position, cell_size: f32) {
     let cell_rect = cell_rect_for_position(grid_rect, food, cell_size);
     painter.rect_filled(cell_rect.shrink(CELL_MARGIN), 3.0, FOOD_COLOR);
+}
+
+/// Draw all foods with different colors based on type
+#[cfg(feature = "multiple_foods")]
+fn draw_foods(painter: &Painter, grid_rect: &Rect, foods: &[Food], cell_size: f32) {
+    for food in foods {
+        let cell_rect = cell_rect_for_position(grid_rect, food.position, cell_size);
+        let color = match food.food_type {
+            FoodType::Normal => NORMAL_FOOD_COLOR,
+            FoodType::Golden => GOLDEN_FOOD_COLOR,
+            FoodType::Special => SPECIAL_FOOD_COLOR,
+        };
+        // Special food gets a slightly larger size to make it more noticeable
+        let margin = if food.food_type == FoodType::Special {
+            CELL_MARGIN * 0.5
+        } else {
+            CELL_MARGIN
+        };
+        painter.rect_filled(cell_rect.shrink(margin), 3.0, color);
+    }
 }
 
 /// Draw the snake
