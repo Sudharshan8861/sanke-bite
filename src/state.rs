@@ -21,10 +21,47 @@ pub struct GameState {
     pub food: Position,
     pub score: u32,
     pub run_state: RunState,
+    #[cfg(feature = "wrap_walls")]
+    pub wrap_walls: bool,
 }
 
 impl GameState {
-    pub fn new<R: RngLike>(grid: GridSize, mut rng: R) -> Self {
+    #[cfg(not(feature = "wrap_walls"))]
+    pub fn new<R: RngLike>(grid: GridSize, rng: R) -> Self {
+        Self::new_with_wrap(grid, rng, false)
+    }
+
+    #[cfg(feature = "wrap_walls")]
+    pub fn new<R: RngLike>(grid: GridSize, rng: R) -> Self {
+        Self::new_with_wrap(grid, rng, false)
+    }
+
+    #[cfg(feature = "wrap_walls")]
+    pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let food = spawn_food(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            food,
+            score: 0,
+            run_state: RunState::Running,
+            wrap_walls,
+        }
+    }
+
+    #[cfg(not(feature = "wrap_walls"))]
+    fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
             y: grid.h / 2,
@@ -79,6 +116,7 @@ impl GameState {
         self.food = spawn_food(&self.grid, &self.snake, &mut rng);
         self.score = 0;
         self.run_state = RunState::Running;
+        // wrap_walls setting is preserved on reset
     }
 }
 
