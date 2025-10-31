@@ -4,3 +4,4 @@ pub mod state;
 pub mod systems;
 pub mod types;
 pub mod settings;
+pub mod persistence;
