@@ -5,10 +5,26 @@ use crate::{
 };
 #[cfg(feature = "multiple_foods")]
 use crate::types::{Food, FoodType};
+#[cfg(feature = "powerups")]
+use crate::types::{PowerUp, PowerUpType};
 
 pub fn step<R: RngLike>(g: &mut GameState, rng: &mut R) {
     if matches!(g.run_state, RunState::Paused | RunState::Over) {
         return;
+    }
+
+    // Note: Duration tracking for power-ups is handled in the game loop (systems.rs)
+    // not here, so it decrements once per update cycle, not per step
+
+    // Handle slow power-up: skip every other step
+    #[cfg(feature = "powerups")]
+    {
+        if let Some((PowerUpType::Slow, _)) = g.active_powerup {
+            g.slow_skip_counter += 1;
+            if g.slow_skip_counter % 2 == 1 {
+                return; // Skip this step
+            }
+        }
     }
 
     let next = next_head(g.snake.body.front().copied().unwrap(), g.snake.dir);
@@ -77,6 +93,40 @@ pub fn step<R: RngLike>(g: &mut GameState, rng: &mut R) {
             g.snake.body.pop_back();
         }
     }
+
+    // Check for power-up collision
+    #[cfg(feature = "powerups")]
+    {
+        if let Some(powerup) = g.powerup {
+            if wrapped_next == powerup.position {
+                let power_type = powerup.power_type;
+                let duration = powerup.initial_duration();
+                
+                // Apply immediate effects (poison)
+                match power_type {
+                    PowerUpType::Poison => {
+                        // Shrink snake by removing tail segment
+                        if g.snake.body.len() > 1 {
+                            g.snake.body.pop_back();
+                        }
+                        // Poison has no duration, so don't set active power-up
+                    }
+                    _ => {
+                        // Activate power-up for slow/fast (they have duration)
+                        g.active_powerup = Some((power_type, duration));
+                        // Reset slow skip counter when activating slow
+                        if matches!(power_type, PowerUpType::Slow) {
+                            g.slow_skip_counter = 0;
+                        }
+                    }
+                }
+                
+                // Remove power-up from grid
+                g.powerup = None;
+            }
+        }
+    }
+
 }
 
 fn next_head(head: Position, dir: Direction) -> Position {
@@ -164,5 +214,115 @@ fn determine_food_type<R: RngLike>(rng: &mut R) -> FoodType {
         FoodType::Golden
     } else {
         FoodType::Special
+    }
+}
+
+#[cfg(feature = "powerups")]
+fn spawn_powerup<R: RngLike>(
+    grid: &GridSize,
+    snake: &Snake,
+    rng: &mut R,
+    existing_powerup: &Option<PowerUp>,
+    #[cfg(feature = "multiple_foods")]
+    existing_foods: &[Food],
+    #[cfg(not(feature = "multiple_foods"))]
+    food: Position,
+) -> Option<PowerUp> {
+    // Don't spawn if one already exists
+    if existing_powerup.is_some() {
+        return None;
+    }
+
+    // Spawn with 10% chance per step (roughly every 10 steps)
+    if (rng.next_u32() % 100) >= 10 {
+        return None;
+    }
+
+    let power_type = determine_powerup_type(rng);
+    
+    let mut attempts = 0;
+    loop {
+        if attempts > 100 {
+            // Give up after 100 attempts
+            return None;
+        }
+        attempts += 1;
+
+        let x = (rng.next_u32() as i32).rem_euclid(grid.w);
+        let y = (rng.next_u32() as i32).rem_euclid(grid.h);
+        let p = Position { x, y };
+
+        // Check not on snake
+        if snake.body.iter().any(|&s| s == p) {
+            continue;
+        }
+
+        // Check not on food
+        #[cfg(not(feature = "multiple_foods"))]
+        if p == food {
+            continue;
+        }
+
+        #[cfg(feature = "multiple_foods")]
+        if existing_foods.iter().any(|f| f.position == p) {
+            continue;
+        }
+
+        // Check not on existing power-up
+        if let Some(existing) = existing_powerup {
+            if existing.position == p {
+                continue;
+            }
+        }
+
+        let duration = match power_type {
+            PowerUpType::Slow => 20,
+            PowerUpType::Fast => 15,
+            PowerUpType::Poison => 0,
+        };
+
+        return Some(PowerUp {
+            position: p,
+            power_type,
+            remaining_duration: duration,
+        });
+    }
+}
+
+#[cfg(feature = "powerups")]
+fn determine_powerup_type<R: RngLike>(rng: &mut R) -> PowerUpType {
+    // Spawn probabilities:
+    // Slow: 40% (0-39)
+    // Fast: 40% (40-79)
+    // Poison: 20% (80-99)
+    let roll = rng.next_u32() % 100;
+    if roll < 40 {
+        PowerUpType::Slow
+    } else if roll < 80 {
+        PowerUpType::Fast
+    } else {
+        PowerUpType::Poison
+    }
+}
+
+
+#[cfg(feature = "powerups")]
+pub fn try_spawn_powerup<R: RngLike>(g: &mut GameState, rng: &mut R) {
+    if g.powerup.is_some() {
+        return; // Already has a power-up on the grid
+    }
+
+    #[cfg(not(feature = "multiple_foods"))]
+    {
+        if let Some(new_powerup) = spawn_powerup(&g.grid, &g.snake, rng, &g.powerup, g.food) {
+            g.powerup = Some(new_powerup);
+        }
+    }
+
+    #[cfg(feature = "multiple_foods")]
+    {
+        if let Some(new_powerup) = spawn_powerup(&g.grid, &g.snake, rng, &g.powerup, &g.foods) {
+            g.powerup = Some(new_powerup);
+        }
     }
 }

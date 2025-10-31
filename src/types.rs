@@ -48,3 +48,31 @@ pub struct Food {
     pub position: Position,
     pub food_type: FoodType,
 }
+
+#[cfg(feature = "powerups")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PowerUpType {
+    Slow,    // Reduces movement speed (skip steps)
+    Fast,    // Increases movement speed (double steps)
+    Poison,  // Reduces snake length
+}
+
+#[cfg(feature = "powerups")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PowerUp {
+    pub position: Position,
+    pub power_type: PowerUpType,
+    pub remaining_duration: u32, // Number of ticks remaining
+}
+
+#[cfg(feature = "powerups")]
+impl PowerUp {
+    /// Initial duration for each power-up type
+    pub fn initial_duration(&self) -> u32 {
+        match self.power_type {
+            PowerUpType::Slow => 20,   // Lasts 20 ticks
+            PowerUpType::Fast => 15,   // Lasts 15 ticks
+            PowerUpType::Poison => 0,  // Poison applies immediately, no duration
+        }
+    }
+}

@@ -1,6 +1,8 @@
 use crate::{rng::RngLike, types::*};
 #[cfg(feature = "multiple_foods")]
 use crate::types::{Food, FoodType};
+#[cfg(feature = "powerups")]
+use crate::types::{PowerUp, PowerUpType};
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,6 +30,12 @@ pub struct GameState {
     pub run_state: RunState,
     #[cfg(feature = "wrap_walls")]
     pub wrap_walls: bool,
+    #[cfg(feature = "powerups")]
+    pub powerup: Option<PowerUp>,
+    #[cfg(feature = "powerups")]
+    pub active_powerup: Option<(PowerUpType, u32)>, // (type, remaining_duration)
+    #[cfg(feature = "powerups")]
+    pub slow_skip_counter: u32, // Skip every other step when slow is active
 }
 
 impl GameState {
@@ -41,7 +49,7 @@ impl GameState {
         Self::new_with_wrap(grid, rng, false)
     }
 
-    #[cfg(all(feature = "wrap_walls", not(feature = "multiple_foods")))]
+    #[cfg(all(feature = "wrap_walls", not(feature = "multiple_foods"), not(feature = "powerups")))]
     pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
@@ -65,7 +73,34 @@ impl GameState {
         }
     }
 
-    #[cfg(all(feature = "wrap_walls", feature = "multiple_foods"))]
+    #[cfg(all(feature = "wrap_walls", not(feature = "multiple_foods"), feature = "powerups"))]
+    pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let food = spawn_food(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            food,
+            score: 0,
+            run_state: RunState::Running,
+            wrap_walls,
+            powerup: None,
+            active_powerup: None,
+            slow_skip_counter: 0,
+        }
+    }
+
+    #[cfg(all(feature = "wrap_walls", feature = "multiple_foods", not(feature = "powerups")))]
     pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
@@ -89,7 +124,34 @@ impl GameState {
         }
     }
 
-    #[cfg(all(not(feature = "wrap_walls"), not(feature = "multiple_foods")))]
+    #[cfg(all(feature = "wrap_walls", feature = "multiple_foods", feature = "powerups"))]
+    pub fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let foods = spawn_initial_foods(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            foods,
+            score: 0,
+            run_state: RunState::Running,
+            wrap_walls,
+            powerup: None,
+            active_powerup: None,
+            slow_skip_counter: 0,
+        }
+    }
+
+    #[cfg(all(not(feature = "wrap_walls"), not(feature = "multiple_foods"), not(feature = "powerups")))]
     fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
@@ -112,7 +174,33 @@ impl GameState {
         }
     }
 
-    #[cfg(all(not(feature = "wrap_walls"), feature = "multiple_foods"))]
+    #[cfg(all(not(feature = "wrap_walls"), not(feature = "multiple_foods"), feature = "powerups"))]
+    fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let food = spawn_food(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            food,
+            score: 0,
+            run_state: RunState::Running,
+            powerup: None,
+            active_powerup: None,
+            slow_skip_counter: 0,
+        }
+    }
+
+    #[cfg(all(not(feature = "wrap_walls"), feature = "multiple_foods", not(feature = "powerups")))]
     fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
         let start = Position {
             x: grid.w / 2,
@@ -132,6 +220,32 @@ impl GameState {
             foods,
             score: 0,
             run_state: RunState::Running,
+        }
+    }
+
+    #[cfg(all(not(feature = "wrap_walls"), feature = "multiple_foods", feature = "powerups"))]
+    fn new_with_wrap<R: RngLike>(grid: GridSize, mut rng: R, _wrap_walls: bool) -> Self {
+        let start = Position {
+            x: grid.w / 2,
+            y: grid.h / 2,
+        };
+
+        let snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+
+        let foods = spawn_initial_foods(&grid, &snake, &mut rng);
+
+        Self {
+            grid,
+            snake,
+            foods,
+            score: 0,
+            run_state: RunState::Running,
+            powerup: None,
+            active_powerup: None,
+            slow_skip_counter: 0,
         }
     }
 
@@ -155,7 +269,7 @@ impl GameState {
         matches!(self.run_state, RunState::Over)
     }
 
-    #[cfg(not(feature = "multiple_foods"))]
+    #[cfg(all(not(feature = "multiple_foods"), not(feature = "powerups")))]
     pub fn reset<R: RngLike>(&mut self, mut rng: R) {
         let start = Position {
             x: self.grid.w / 2,
@@ -172,7 +286,27 @@ impl GameState {
         // wrap_walls setting is preserved on reset
     }
 
-    #[cfg(feature = "multiple_foods")]
+    #[cfg(all(not(feature = "multiple_foods"), feature = "powerups"))]
+    pub fn reset<R: RngLike>(&mut self, mut rng: R) {
+        let start = Position {
+            x: self.grid.w / 2,
+            y: self.grid.h / 2,
+        };
+
+        self.snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+        self.food = spawn_food(&self.grid, &self.snake, &mut rng);
+        self.score = 0;
+        self.run_state = RunState::Running;
+        self.powerup = None;
+        self.active_powerup = None;
+        self.slow_skip_counter = 0;
+        // wrap_walls setting is preserved on reset
+    }
+
+    #[cfg(all(feature = "multiple_foods", not(feature = "powerups")))]
     pub fn reset<R: RngLike>(&mut self, mut rng: R) {
         let start = Position {
             x: self.grid.w / 2,
@@ -186,6 +320,26 @@ impl GameState {
         self.foods = spawn_initial_foods(&self.grid, &self.snake, &mut rng);
         self.score = 0;
         self.run_state = RunState::Running;
+        // wrap_walls setting is preserved on reset
+    }
+
+    #[cfg(all(feature = "multiple_foods", feature = "powerups"))]
+    pub fn reset<R: RngLike>(&mut self, mut rng: R) {
+        let start = Position {
+            x: self.grid.w / 2,
+            y: self.grid.h / 2,
+        };
+
+        self.snake = Snake {
+            body: std::iter::once(start).collect(),
+            dir: Direction::Right,
+        };
+        self.foods = spawn_initial_foods(&self.grid, &self.snake, &mut rng);
+        self.score = 0;
+        self.run_state = RunState::Running;
+        self.powerup = None;
+        self.active_powerup = None;
+        self.slow_skip_counter = 0;
         // wrap_walls setting is preserved on reset
     }
 }
