@@ -1,0 +1,35 @@
+[tasks.check]
+description = "Run cargo check"
+command = "cargo"
+args = ["check"]
+
+[tasks.test]
+description = "Run cargo tests"
+command = "cargo"
+args = ["test"]
+
+[tasks.fmt]
+description = "Run cargo format"
+command = "cargo"
+args = ["fmt", "--all", "--", "--check"]
+
+[tasks.clippy]
+description = "Run cargo clippy"
+command = "cargo"
+args = ["clippy", "--", "-D", "warnings"]
+
+[tasks.build]
+description = "Run cargo build"
+command = "cargo"
+args = ["build"]
+
+[tasks.cov]
+description = "Run coverage"
+install_crate = { crate_name = "cargo-llvm-cov", test_arg = "--version" }
+command = "cargo"
+args = ["llvm-cov", "--workspace", "--html", "--output-path", "target/llvm-cov.html"]
+
+[tasks.bench]
+description = "Run benchmarks"
+command = "cargo"
+args = ["bench"]
